@@ -1,2 +1,4 @@
 # hpapi-sec
-Security monitoring for Hpapi
+
+# Copyright 2018 Whitelamp http://www.whitelamp.com/
+

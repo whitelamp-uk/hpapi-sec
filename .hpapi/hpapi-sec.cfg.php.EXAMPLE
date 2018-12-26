@@ -1,0 +1,10 @@
+<?php
+
+// Job configuration
+define ( 'HPAPI_SEC_CONFIG',           HPAPI_DIR_CONFIG.'/whitelamp-uk/hpapi-sec.cfg.json'                                      );
+
+// Logging
+define ( 'HPAPI_SEC_LOG',              HPAPI_DIR_LOG.'hpapi-sec.log'                                                            );
+define ( 'HPAPI_SEC_LOG_LINES',        4096                                                                                     );
+define ( 'HPAPI_SEC_LOG_TMP',          '/tmp/whitelamp-uk-hpapi-sec-'                                                           );
+
