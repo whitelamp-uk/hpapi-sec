@@ -4,26 +4,24 @@
 
 namespace Hpapi;
 
-class SecurityJob {
+class Security {
 
-    protected $config;
+    protected $jobs;
     protected $hpapi;
     protected $userId;
-    protected $now;
     protected $uids;
     protected $tmp;
     protected $fp;
-    protected $lines;
+    protected $lines = 0;
 
     public function __construct (\Hpapi\Hpapi $hpapi) {
-        $this->config   = json_decode (HPAPI_SEC_CONFIG);
+        $config         = json_decode (file_get_contents(HPAPI_SEC_CONFIG));
+        $this->jobs     = $config->jobs;
         $this->hpapi    = $hpapi;
         $this->userId   = $this->hpapi->userId;
-        $this->now      = time ();
-        $this->dt       = new \DateTime ('@'.$this->now);
+        $this->dt       = new \DateTime ('@'.$this->hpapi->timestamp);
         $this->uids     = array ();
-        $this->tmp      = HPAPI_SEC_LOG_TMP.getmypid().'.tmp'
-        $this->lines    = HPAPI_SEC_LOG_TMP.getmypid().'.tmp'
+        $this->tmp      = HPAPI_SEC_LOG_TMP.getmypid().'.tmp';
     }
 
     public function __destruct ( ) {
@@ -32,17 +30,17 @@ class SecurityJob {
 /* API */
 
     public function job ($job) {
-        if (!property_exists($this->config->jobs,$job)) {
+        if (!property_exists($this->jobs,$job)) {
             throw new \Exception (HPAPI_SEC_EXCEPT_JOB);
             return false;
         }
         $this->fp       = fopen ($this->tmp,'a');
-        $scope          = $this->config->jobs->{$job}->scanSeconds;
-        foreach ($this->config->jobs->{$job}->rules as $rule) {
+        $scope          = $this->jobs->{$job}->scanSeconds;
+        foreach ($this->jobs->{$job}->rules as $rule) {
             $uids       = $this->{'method_'.$rule->method} ($scope,$rule->hits,$rule->withinSeconds);
             foreach ($uids as $row) {
                 $this->uid ($row['userId'],$rule->userLockSeconds);
-                $this->log ($this->dt->format(\DateTime::ATOM).' '.$rule->method.' '.$row['email'].' '.$row['matches'].'/'.$rule->withinSeconds);
+                $this->log ($this->dt->format(\DateTime::ATOM).' '.$rule->method.' : '.$this->logLine($row).' / '.$rule->withinSeconds);
             }
         }
         $this->lock ();
@@ -50,6 +48,7 @@ class SecurityJob {
         fclose ($this->fp);
         unlink (HPAPI_SEC_LOG);
         rename ($this->tmp,HPAPI_SEC_LOG);
+        return true;
     }
 
 /* Rule methods */
@@ -63,21 +62,11 @@ class SecurityJob {
 */
     }
 
-    protected function method_ipdeny ($scope,$count,$within) {
-        return $this->find ('hpapiSecIpDeny',$scope,$count,$within);
-/*
-    Find failed remote addresses* within a time scope (from now) that
-    match too many failed remote addresses* within a number of seconds
-    for the same user
-    * Fail to match remote_addr_pattern for any of user, group or package
-*/
-    }
-
     protected function method_iplim ($scope,$count,$within) {
         return $this->find ('hpapiSecIpLim',$scope,$count,$within);
 /*
     Find requests within a time scope (from now) that
-    match too many remote addresses within a number of seconds
+    match too many distinct remote addresses within a number of seconds
     for the same user
 */
     }
@@ -92,11 +81,13 @@ class SecurityJob {
     }
 
     protected function method_pwd ($scope,$count,$within) {
+return array ();
         return $this->find ('hpapiSecPwd',$scope,$count,$within);
 /*
     Find failed authentications within a time scope (from now) that
     match too many users within a number of seconds
     for the same password
+    Requires logging of bad passwords (hashed?) before it can be implemented
 */
     }
 
@@ -111,11 +102,21 @@ class SecurityJob {
 
 /* Utilities */
 
+    protected function logLine ($arr) {
+        foreach ($arr as $k=>$v) {
+            $arr[$k] = trim ($v);
+            if ($arr[$k]=='') {
+                $arr[$k] = '-';
+            }
+        }
+        return implode (' ',$arr);
+    }
+
     protected function find ($spr,$scope,$count,$within) {
         $uids   = $this->hpapi->dbCall (
             $spr
-           ,$this->now - intval ($scope)
-           ,$this->now
+           ,$this->hpapi->timestamp - intval ($scope)
+           ,$this->hpapi->timestamp
            ,$count
            ,$within
         );
@@ -125,7 +126,7 @@ class SecurityJob {
     protected function lock ( ) {
         $uids               = '';
         $notfirst           = false;
-        foreach ($this->uids as $uid=>$lock)
+        foreach ($this->uids as $uid=>$lock) {
             $next           = '';
             if ($notfirst) {
                 if ($lock!=$firstlock) {
@@ -144,11 +145,19 @@ class SecurityJob {
             $uids          .= $next;
             unset ($this->uids[$uid]);
         }
-        $this->hpapi->dbCall (
-            'hpapiSecLock'
-           ,$uids
-           ,$this->now + $firstlock
+       if (strlen($uids)) {
+$this->hpapi->diagnostic ('lock: set '.($this->hpapi->timestamp+$firstlock).'for all in ('.$uids.')');
+/*
+            $this->hpapi->dbCall (
+                'hpapiSecLock'
+               ,$uids
+               ,$this->hpapi->timestamp + $firstlock
         );
+*/
+        }
+else {
+$this->hpapi->diagnostic ('lock: no user IDs');
+}
         if (!count($this->uids)) {
             return;
         }
@@ -162,7 +171,10 @@ class SecurityJob {
     }
 
     protected function logEnd ( ) {
-        $lines = file (HPAPI_SEC_LOG);
+        $lines      = array ();
+        if (file_exists(HPAPI_SEC_LOG)) {
+            $lines  = file (HPAPI_SEC_LOG);
+        }
         foreach ($lines as $line) {
             if ($this->lines>HPAPI_SEC_LOG_LINES) {
                 break;

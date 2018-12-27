@@ -1,10 +1,4 @@
 {
-    "key" : "caf791fc-d224-11e8-956a-00165e0004e8",
-    "email" : "system@[::1]",
-    "password" : "password",
-    "vendor": "whitelamp-uk",
-    "package": "hpapi-sec",
-    "class": "\\Hpapi\\SecurityJob",
     "jobs" : {
         "10s" : {
             "scanSeconds" : 10,
@@ -17,7 +11,7 @@
                 },
                 {
                     "method": "iplim",
-                    "hits" : 2,
+                    "hits" : 1,
                     "withinSeconds" : 10,
                     "userLockSeconds" : 300
                 },
@@ -39,14 +33,8 @@
                     "userLockSeconds" : 300
                 },
                 {
-                    "method": "ipdeny",
-                    "hits" : 2,
-                    "withinSeconds" : 30,
-                    "userLockSeconds" : 300
-                },
-                {
                     "method": "key",
-                    "hits" : 10,
+                    "hits" : 1,
                     "withinSeconds" : 60,
                     "userLockSeconds" : 300
                 },
