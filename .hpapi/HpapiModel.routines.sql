@@ -13,8 +13,8 @@ CREATE PROCEDURE `hpapiInsertSystemUser`(
   IN        `em` VARCHAR(254) CHARSET ascii
 )
 BEGIN
-  INSERT INTO `hpapi_user` (`active`, `uuid`, `key`, `key_expired`, `key_release`, `key_release_until`, `remote_addr_pattern`, `name`, `notes`, `email`, `email_verified`, `email_fallback`, `email_fallback_verified`, `password_hash`) VALUES
-    (1,	'000891b3-0912-11e9-b658-6d7f358a16ce',	'9894c0d9-0913-11e9-b658-6d7f358a16ce',	0,	0,	'0000-00-00 00:00:00',	'^::1$',	'System user',	'Used for system processes calling API from localhost',	em,	1,	'',	0,	'$2y$10$hLSdApW6.30YLK3ze49uSu7OV0gmS3ZT65pufxDPGiMxsmW3bykeq')
+  INSERT INTO `hpapi_user` (`active`, `verified`, `uuid`, `key`, `key_expired`, `key_release`, `key_release_until`, `remote_addr_pattern`, `name`, `notes`, `email`, `password_hash`) VALUES
+    (1, 1,	'000891b3-0912-11e9-b658-6d7f358a16ce',	'9894c0d9-0913-11e9-b658-6d7f358a16ce',	0,	0,	'0000-00-00 00:00:00',	'^::1$',	'System user',	'Used for system processes calling API from localhost',	em,	'$2y$10$hLSdApW6.30YLK3ze49uSu7OV0gmS3ZT65pufxDPGiMxsmW3bykeq')
   ;
   INSERT INTO `hpapi_membership` (`user_id`, `usergroup`) VALUES
     (LAST_INSERT_ID(),	'system')
