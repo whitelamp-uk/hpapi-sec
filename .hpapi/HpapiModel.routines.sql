@@ -24,27 +24,6 @@ BEGIN
 END$$
 
 
-DROP PROCEDURE IF EXISTS `hpapiSecLock`$$
-CREATE PROCEDURE `hpapiSecLock`(
-  IN        `uids` VARCHAR(255) CHARSET ascii
- ,IN        `ts` INT(11) unsigned
-)  
-BEGIN  
-  SET @qry = CONCAT(
-          "UPDATE `hpapi_user` SET `locked_until`='"
-         ,FROM_UNIXTIME(ts)
-         ,"'' WHERE `id` IN ("
-         ,uids
-         ,")"
-      )
-  ;
-  PREPARE stmt FROM @qry
-  ;
-  EXECUTE stmt
-  ;
-END$$
-
-
 DROP PROCEDURE IF EXISTS `hpapiSecAuth`$$
 CREATE PROCEDURE `hpapiSecAuth`(
   IN        `earliest` INT(11) UNSIGNED
@@ -83,6 +62,7 @@ BEGIN
     AND `later`.`datetime` IS NULL
   GROUP BY `log`.`datetime`,`log`.`microtime`,`log`.`key`
     HAVING COUNT(*)>=qty
+  ORDER BY `log`.`datetime` DESC, `log`.`microtime` DESC
   ;
 END$$
 
@@ -123,6 +103,7 @@ BEGIN
     AND `later`.`datetime` IS NULL
   GROUP BY `log`.`datetime`,`log`.`microtime`,`log`.`key`
     HAVING COUNT(DISTINCT `earlier`.`remote_addr`)>=qty
+  ORDER BY `log`.`datetime` DESC, `log`.`microtime` DESC
   ;
 END$$
 
@@ -164,6 +145,7 @@ BEGIN
     AND `later`.`datetime` IS NULL
   GROUP BY `log`.`datetime`,`log`.`microtime`,`log`.`key`
     HAVING COUNT(DISTINCT `earlier`.`user_id`)>=1
+  ORDER BY `log`.`datetime` DESC, `log`.`microtime` DESC
   ;
 END$$
 
@@ -205,6 +187,7 @@ BEGIN
     AND `later`.`datetime` IS NULL
   GROUP BY `log`.`datetime`,`log`.`microtime`,`log`.`key`
     HAVING COUNT(DISTINCT `earlier`.`user_id`)>=1
+  ORDER BY `log`.`datetime` DESC, `log`.`microtime` DESC
   ;
 END$$
 
@@ -244,6 +227,7 @@ BEGIN
     AND `later`.`datetime` IS NULL
   GROUP BY `log`.`datetime`,`log`.`microtime`,`log`.`key`
     HAVING COUNT(*)>=qty
+  ORDER BY `log`.`datetime` DESC, `log`.`microtime` DESC
   ;
 END$$
 

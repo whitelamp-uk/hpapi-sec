@@ -9,19 +9,22 @@ class Security {
     protected $jobs;
     protected $hpapi;
     protected $userId;
-    protected $uids;
+    protected $blacklist;
     protected $tmp;
     protected $fp;
     protected $lines = 0;
+    protected $itemCount = 0;
+    protected $items = array ();
 
     public function __construct (\Hpapi\Hpapi $hpapi) {
-        $config         = json_decode (file_get_contents(HPAPI_SEC_CONFIG));
-        $this->jobs     = $config->jobs;
-        $this->hpapi    = $hpapi;
-        $this->userId   = $this->hpapi->userId;
-        $this->dt       = new \DateTime ('@'.$this->hpapi->timestamp);
-        $this->uids     = array ();
-        $this->tmp      = HPAPI_SEC_LOG_TMP.getmypid().'.tmp';
+        $config                 = json_decode (file_get_contents(HPAPI_SEC_CONFIG));
+        $this->jobs             = $config->jobs;
+        $this->hpapi            = $hpapi;
+        $this->userId           = $this->hpapi->userId;
+        $this->dt               = new \DateTime ('@'.$this->hpapi->timestamp);
+        $this->uids             = array ();
+        $pid                    = getmypid ();
+        $this->tmp              = HPAPI_SEC_DIGEST_TMP.$pid.'.tmp';
     }
 
     public function __destruct ( ) {
@@ -34,20 +37,22 @@ class Security {
             throw new \Exception (HPAPI_SEC_EXCEPT_JOB);
             return false;
         }
-        $this->fp       = fopen ($this->tmp,'a');
-        $scope          = $this->jobs->{$job}->scanSeconds;
+        $scope                  = $this->jobs->{$job}->scanSeconds;
+        $this->blacklist        = new \stdClass ();
+        $this->fp               = fopen ($this->tmp,'a');
+        $this->digestStart ($job);
         foreach ($this->jobs->{$job}->rules as $rule) {
-            $uids       = $this->{'method_'.$rule->method} ($scope,$rule->hits,$rule->withinSeconds);
-            foreach ($uids as $row) {
-                $this->uid ($row['userId'],$rule->userLockSeconds);
-                $this->log ($this->dt->format(\DateTime::ATOM).' '.$rule->method.' : '.$this->logLine($row).' / '.$rule->withinSeconds);
+            $rows               = $this->{'method_'.$rule->method} ($scope,$rule->hits,$rule->withinSeconds);
+            foreach ($rows as $row) {
+                $this->digest ($this->dt->format(\DateTime::ATOM),$rule->method,$this->digestLine($row),$rule->withinSeconds);
+                $this->blacklist ($rule->method,$row,$this->timestamp+$rule->userLockSeconds);
             }
         }
-        $this->lock ();
-        $this->logEnd ();
+        $this->digestEnd ();
+        $this->blacklistEnd ();
         fclose ($this->fp);
-        unlink (HPAPI_SEC_LOG);
-        rename ($this->tmp,HPAPI_SEC_LOG);
+        rename ($this->tmp,HPAPI_SEC_DIGEST);
+        $this->hpapi->exportArray (HPAPI_SEC_BLACKLIST,$this->items);
         return true;
     }
 
@@ -102,92 +107,95 @@ return array ();
 
 /* Utilities */
 
-    protected function logLine ($arr) {
-        foreach ($arr as $k=>$v) {
-            $arr[$k] = trim ($v);
-            if ($arr[$k]=='') {
-                $arr[$k] = '-';
+    protected function blacklist ($mtd,$row,$lock) {
+        if ($this->itemCount>=HPAPI_SEC_BLACKLIST_ITEMS) {
+            return;
+        }
+        if ($mtd=='iplim') {
+            $attribute  = 'remoteAddr';
+        }
+        elseif ($mtd=='key') {
+            $attribute  = 'key';
+        }
+        elseif ($mtd=='pwd') {
+            $attribute  = 'badPassword';
+        }
+        else {
+            $attribute  = 'email';
+        }
+        array_push ($this->items,array($attribute,$row[$attribute],$lock));
+    }
+
+    protected function blacklistEnd ( ) {
+        if ($this->itemCount>=HPAPI_SEC_BLACKLIST_ITEMS) {
+            return;
+        }
+        $b = false;
+        try {
+            if (is_readable(HPAPI_SEC_BLACKLIST)) {
+                $b = include HPAPI_SEC_BLACKLIST;
             }
         }
-        return implode (' ',$arr);
+        catch (\Exception $e) {
+            return;
+        }
+        if (!is_array($b) || !count($b)) {
+            return;
+        }
+        foreach ($b as $item) {
+            if ($this->itemCount>=HPAPI_SEC_BLACKLIST_ITEMS) {
+                break;
+            }
+            array_push ($this->items,$item);
+            $this->itemCount++;
+        }
+    }
+
+    protected function digest ($ts,$mtd,$row,$secs) {
+        if ($this->lines>=HPAPI_SEC_DIGEST_LINES) {
+            return;
+        }
+        foreach ($row as $k=>$v) {
+            $row[$k] = trim ($v);
+            if ($row[$k]=='') {
+                $row[$k] = '-';
+            }
+        }
+        $row = implode (' ',$row);
+        fwrite ($this->fp,$ts.' '.$mtd.': '.$row.' / '.$secs."\n");
+        $this->lines++;
+    }
+
+    protected function digestEnd ( ) {
+        if ($this->lines>=HPAPI_SEC_DIGEST_LINES) {
+            return;
+        }
+        $lines      = array ();
+        if (file_exists(HPAPI_SEC_DIGEST)) {
+            $lines  = file (HPAPI_SEC_DIGEST);
+        }
+        foreach ($lines as $line) {
+            if ($this->lines>=HPAPI_SEC_DIGEST_LINES) {
+                break;
+            }
+            fwrite ($this->fp,$line);
+            $this->lines++;
+        }
+    }
+
+    protected function digestStart ($job) {
+            fwrite ($this->fp,'# JOB: '.$job."\n");
     }
 
     protected function find ($spr,$scope,$count,$within) {
-        $uids   = $this->hpapi->dbCall (
+        $rows = $this->hpapi->dbCall (
             $spr
            ,$this->hpapi->timestamp - intval ($scope)
            ,$this->hpapi->timestamp
            ,$count
            ,$within
         );
-        return $uids;
-    }
-
-    protected function lock ( ) {
-        $uids               = '';
-        $notfirst           = false;
-        foreach ($this->uids as $uid=>$lock) {
-            $next           = '';
-            if ($notfirst) {
-                if ($lock!=$firstlock) {
-                    continue;
-                }
-                $next      .= ',';
-            }
-            else {
-                $firstlock  = $lock;
-                $notfirst   = true;
-            }
-            $next          .= intval ($uid);
-            if ((strlen($uids)+strlen($next))>255) {
-                break;
-            }
-            $uids          .= $next;
-            unset ($this->uids[$uid]);
-        }
-       if (strlen($uids)) {
-$this->hpapi->diagnostic ('lock: set '.($this->hpapi->timestamp+$firstlock).'for all in ('.$uids.')');
-/*
-            $this->hpapi->dbCall (
-                'hpapiSecLock'
-               ,$uids
-               ,$this->hpapi->timestamp + $firstlock
-        );
-*/
-        }
-else {
-$this->hpapi->diagnostic ('lock: no user IDs');
-}
-        if (!count($this->uids)) {
-            return;
-        }
-        // Recurse until all done
-        $this->lock ();
-    }
-
-    protected function log ($str) {
-        fwrite ($this->fp,$str."\n");
-        $this->lines++;
-    }
-
-    protected function logEnd ( ) {
-        $lines      = array ();
-        if (file_exists(HPAPI_SEC_LOG)) {
-            $lines  = file (HPAPI_SEC_LOG);
-        }
-        foreach ($lines as $line) {
-            if ($this->lines>HPAPI_SEC_LOG_LINES) {
-                break;
-            }
-            $this->lines++;
-        }
-    }
-
-    protected function uid ($uid,$lock) {
-        if (array_key_exists($uid,$this->uids) && $this->uids[$uid]>$lock) {
-            return;
-        }
-        $this->uids[$uid] = $lock;
+        return $rows;
     }
 
 }
