@@ -9,6 +9,6 @@ define ( 'HPAPI_SEC_DIGEST_LINES',     4096                                     
 define ( 'HPAPI_SEC_DIGEST_TMP',       '/tmp/whitelamp-uk-hpapi-sec-digest-'                                                    );
 
 // Blacklists
-define ( 'HPAPI_SEC_BLACKLIST',        HPAPI_DIR_LOG.'/hpapi-sec-blacklists.php.log'                                            );
+define ( 'HPAPI_SEC_BLACKLIST',        HPAPI_DIR_LOG.'/hpapi-sec-blacklist.php.log'                                             );
 define ( 'HPAPI_SEC_BLACKLIST_ITEMS',  1000                                                                                     );
 
